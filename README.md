@@ -1,6 +1,6 @@
 # SimplexFlame
 
-A native macOS Metal wallpaper experiment inspired by the supplied fire-gradient image. The image is not loaded at runtime: the soft shapes, charcoal/red/orange/teal palette, and stable grain are procedural.
+A native macOS Metal wallpaper experiment inspired by some random image from the internet. The image is not loaded at runtime: the soft shapes, charcoal/red/orange/teal palette, and stable grain are procedural.
 
 ![](./img.png)
 
