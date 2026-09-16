@@ -15,9 +15,9 @@ open dist/SimplexFlame.app
 
 The app opens a preview with flow speed, grain, and brightness controls. Click **Use as Wallpaper** to place the animation behind desktop icons on each connected screen. Use the **flame menu-bar icon** to reopen controls, pause, disable the wallpaper, or quit. Quitting reveals the existing wallpaper. Slider settings are remembered. It does not install a login item or change the system wallpaper image.
 
-Check **Pomodoro · 20 Minutes** in the flame menu to start a fixed 20-minute fullscreen countdown over the animated wallpaper on every display. Double-click anywhere, press Escape, or uncheck the menu item to end and reset it. The session also ends automatically at zero; the next session always starts at 20:00. Move the pointer to the top edge to reveal the menu bar. Your previous wallpaper/preview mode returns when the session ends. Sleep counts toward the 20 minutes.
+Check **Pomodoro · 20 Minutes** in the flame menu to enable repeating breaks. After 20 minutes of normal work, a fullscreen splash over the animated wallpaper on every display counts down from 30 seconds to zero. It then returns to your previous wallpaper/preview mode and starts the next 20-minute work interval. Double-click anywhere or press Escape to skip a break and begin the next work interval immediately. Uncheck the menu item at any time to stop the cycle and dismiss any active break. Move the pointer to the top edge to reveal the menu bar during a break. Sleep counts toward the interval; a break that becomes due during sleep appears on wake.
 
-Pomodoro reuses the existing wallpaper views and adds a separate text overlay updated once per second. When inactive, it has no running timer or overlay; the Metal shader, resolution, render passes, and frame rate are unchanged.
+Pomodoro reuses the existing wallpaper views and adds a separate text overlay updated once per second during breaks. Work intervals use a single scheduled timer, with no overlay or per-second updates. When disabled, there is no running timer or overlay; the Metal shader, resolution, render passes, and frame rate are unchanged.
 
 ## Render a still
 

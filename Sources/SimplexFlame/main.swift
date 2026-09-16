@@ -162,7 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc func showPreview() {
-        if pomodoro.isActive { stopPomodoro() }
+        if pomodoro.isOnBreak { finishPomodoroBreak() }
         preview.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         previewRenderer.resize(previewView)
@@ -178,7 +178,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc func toggleWallpaper() {
-        if pomodoro.isActive { stopPomodoro() }
+        if pomodoro.isOnBreak { finishPomodoroBreak() }
         wallpaperEnabled.toggle()
         rebuildDesktops()
         wallpaperButton.title = wallpaperEnabled ? "Stop Wallpaper" : "Use as Wallpaper"
@@ -192,7 +192,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         pomodoroOverlays.removeAll()
         for (window,view,_) in desktops { view.isPaused = true; window.close() }
         desktops.removeAll()
-        guard wallpaperEnabled || pomodoro.isActive else { return }
+        guard wallpaperEnabled || pomodoro.isOnBreak else { return }
         do {
             for screen in NSScreen.screens {
                 let renderer = try FlameRenderer(settings: settings)
@@ -220,24 +220,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             rebuildDesktops()
             NSAlert(error: error).runModal()
         }
-        if pomodoro.isActive { presentPomodoro() }
+        if pomodoro.isOnBreak { presentPomodoro() }
         updateRendering()
     }
 
     @objc func togglePomodoro() {
         if pomodoro.isActive { stopPomodoro(); return }
-        previewWasVisible = preview.isVisible
-        previousApplication = NSWorkspace.shared.frontmostApplication
-        previousPresentationOptions = NSApp.presentationOptions
         pomodoro.start()
         for item in pomodoroMenuItems { item.state = .on }
-        preview.orderOut(nil)
-        if desktops.isEmpty { rebuildDesktops() } else { presentPomodoro() }
-        guard pomodoro.isActive else { return }
-        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.updatePomodoro() }
+        schedulePomodoroTimer()
+    }
+
+    func schedulePomodoroTimer() {
+        pomodoroTimer?.invalidate()
+        // A single wake-up after work; only the visible break ticks every second.
+        let interval = pomodoro.isOnBreak ? 1 : TimeInterval(pomodoro.remainingSeconds())
+        let timer = Timer(timeInterval: interval, repeats: pomodoro.isOnBreak) { [weak self] _ in self?.updatePomodoro() }
         timer.tolerance = 0.1
         pomodoroTimer = timer
         RunLoop.main.add(timer, forMode: .common)
+    }
+
+    func startPomodoroBreak() {
+        previewWasVisible = preview.isVisible
+        previousApplication = NSWorkspace.shared.frontmostApplication
+        previousPresentationOptions = NSApp.presentationOptions
+        pomodoro.startBreak()
+        preview.orderOut(nil)
+        if desktops.isEmpty { rebuildDesktops() } else { presentPomodoro() }
+        guard pomodoro.isActive else { return }
+        schedulePomodoroTimer()
         updateRendering()
     }
 
@@ -253,7 +265,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
             window.ignoresMouseEvents = false
             let overlay = PomodoroOverlay(frame: view.bounds)
-            overlay.onInterrupt = { [weak self] in self?.stopPomodoro() }
+            overlay.onInterrupt = { [weak self] in self?.finishPomodoroBreak() }
             overlay.update(seconds: pomodoro.remainingSeconds())
             view.addSubview(overlay)
             pomodoroOverlays.append(overlay)
@@ -264,18 +276,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func updatePomodoro() {
-        guard pomodoro.isActive else { return }
+        guard pomodoro.isActive, !displayAsleep else { return }
         let remaining = pomodoro.remainingSeconds()
-        if remaining == 0 { stopPomodoro(); return }
-        for overlay in pomodoroOverlays { overlay.update(seconds: remaining) }
+        if remaining == 0 {
+            if pomodoro.isOnBreak { finishPomodoroBreak() } else { startPomodoroBreak() }
+        } else if pomodoro.isOnBreak {
+            for overlay in pomodoroOverlays { overlay.update(seconds: remaining) }
+        }
+    }
+
+    func finishPomodoroBreak() {
+        guard pomodoro.isOnBreak else { return }
+        pomodoro.start()
+        dismissPomodoro()
+        schedulePomodoroTimer()
     }
 
     func stopPomodoro() {
         guard pomodoro.isActive else { return }
         pomodoroTimer?.invalidate()
         pomodoroTimer = nil
+        let wasOnBreak = pomodoro.isOnBreak
         pomodoro.reset()
         for item in pomodoroMenuItems { item.state = .off }
+        if wasOnBreak { dismissPomodoro() }
+    }
+
+    func dismissPomodoro() {
         for overlay in pomodoroOverlays { overlay.removeFromSuperview() }
         pomodoroOverlays.removeAll()
         NSApp.presentationOptions = previousPresentationOptions
@@ -327,7 +354,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func quit() { NSApp.terminate(nil) }
     func applicationWillTerminate(_ notification: Notification) {
         pomodoroTimer?.invalidate()
-        if pomodoro.isActive { NSApp.presentationOptions = previousPresentationOptions }
+        if pomodoro.isOnBreak { NSApp.presentationOptions = previousPresentationOptions }
     }
 }
 

@@ -3,21 +3,32 @@ import AppKit
 /// A monotonic deadline keeps the countdown accurate after sleep or delayed UI updates.
 struct PomodoroSession {
     static let duration = 20 * 60
+    static let breakDuration = 30
     private(set) var deadline: ContinuousClock.Instant?
+    private(set) var isOnBreak = false
 
     var isActive: Bool { deadline != nil }
 
     mutating func start(now: ContinuousClock.Instant = .now) {
+        isOnBreak = false
         deadline = now.advanced(by: .seconds(Self.duration))
     }
 
-    mutating func reset() { deadline = nil }
+    mutating func startBreak(now: ContinuousClock.Instant = .now) {
+        isOnBreak = true
+        deadline = now.advanced(by: .seconds(Self.breakDuration))
+    }
+
+    mutating func reset() {
+        deadline = nil
+        isOnBreak = false
+    }
 
     func remainingSeconds(now: ContinuousClock.Instant = .now) -> Int {
         guard let deadline else { return Self.duration }
         let components = now.duration(to: deadline).components
         let seconds = Double(components.seconds) + Double(components.attoseconds) / 1e18
-        return max(0, min(Self.duration, Int(ceil(seconds))))
+        return max(0, min(isOnBreak ? Self.breakDuration : Self.duration, Int(ceil(seconds))))
     }
 
     static func label(for seconds: Int) -> String {
@@ -27,18 +38,18 @@ struct PomodoroSession {
 
 /// An AppKit overlay; the wallpaper's Metal pipeline does not render the timer.
 final class PomodoroOverlay: NSView {
-    private let countdown = NSTextField(labelWithString: "20:00")
+    private let countdown = NSTextField(labelWithString: "00:30")
     var onInterrupt: (() -> Void)?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         autoresizingMask = [.width, .height]
 
-        let title = NSTextField(labelWithString: "FOCUS")
+        let title = NSTextField(labelWithString: "TAKE A BREAK")
         title.font = .systemFont(ofSize: 13, weight: .semibold)
         countdown.font = .monospacedDigitSystemFont(ofSize: 88, weight: .light)
         countdown.setAccessibilityLabel("Time remaining")
-        let hint = NSTextField(labelWithString: "Double-click anywhere to end · Esc to exit")
+        let hint = NSTextField(labelWithString: "Double-click anywhere or press Esc to skip this break")
         hint.font = .systemFont(ofSize: 13)
 
         let stack = NSStackView(views: [title, countdown, hint])
