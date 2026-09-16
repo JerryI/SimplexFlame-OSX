@@ -5,5 +5,8 @@ let package = Package(
     name: "SimplexFlame",
     platforms: [.macOS(.v13)],
     products: [.executable(name: "SimplexFlame", targets: ["SimplexFlame"])],
-    targets: [.executableTarget(name: "SimplexFlame", resources: [.copy("Flame.metal")])]
+    targets: [
+        .executableTarget(name: "SimplexFlame", resources: [.copy("Flame.metal")]),
+        .testTarget(name: "SimplexFlameTests", dependencies: ["SimplexFlame"])
+    ]
 )

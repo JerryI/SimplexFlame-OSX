@@ -2,7 +2,8 @@ import AppKit
 import MetalKit
 
 final class DesktopWindow: NSWindow {
-    override var canBecomeKey: Bool { false }
+    var presentsPomodoro = false
+    override var canBecomeKey: Bool { presentsPomodoro }
     override var canBecomeMain: Bool { false }
 }
 
@@ -19,6 +20,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var pauseButton: NSButton!
     var wallpaperMenuItem: NSMenuItem!
     var pauseMenuItem: NSMenuItem!
+    var pomodoroMenuItems: [NSMenuItem] = []
+    var pomodoro = PomodoroSession()
+    var pomodoroTimer: Timer?
+    var pomodoroOverlays: [PomodoroOverlay] = []
+    var previewWasVisible = false
+    var previousApplication: NSRunningApplication?
+    var previousPresentationOptions: NSApplication.PresentationOptions = []
     var valueLabels: [Int: NSTextField] = [:]
     var observers: [NSObjectProtocol] = []
 
@@ -44,6 +52,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "Show Preview & Controls…", action: #selector(showPreview), keyEquivalent: ",").target = self
+        let appPomodoro = appMenu.addItem(withTitle: "Pomodoro · 20 Minutes", action: #selector(togglePomodoro), keyEquivalent: "")
+        appPomodoro.target = self
+        pomodoroMenuItems.append(appPomodoro)
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit SimplexFlame", action: #selector(quit), keyEquivalent: "q").target = self
         appItem.submenu = appMenu
@@ -60,6 +71,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         wallpaperMenuItem.target = self
         pauseMenuItem = menu.addItem(withTitle: "Pause Animation", action: #selector(togglePause), keyEquivalent: "")
         pauseMenuItem.target = self
+        menu.addItem(.separator())
+        let pomodoroMenuItem = menu.addItem(withTitle: "Pomodoro · 20 Minutes", action: #selector(togglePomodoro), keyEquivalent: "")
+        pomodoroMenuItem.target = self
+        pomodoroMenuItems.append(pomodoroMenuItem)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit SimplexFlame", action: #selector(quit), keyEquivalent: "q").target = self
         statusItem.menu = menu
@@ -147,6 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc func showPreview() {
+        if pomodoro.isActive { stopPomodoro() }
         preview.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         previewRenderer.resize(previewView)
@@ -162,6 +178,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc func toggleWallpaper() {
+        if pomodoro.isActive { stopPomodoro() }
         wallpaperEnabled.toggle()
         rebuildDesktops()
         wallpaperButton.title = wallpaperEnabled ? "Stop Wallpaper" : "Use as Wallpaper"
@@ -172,9 +189,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func rebuildDesktops() {
+        pomodoroOverlays.removeAll()
         for (window,view,_) in desktops { view.isPaused = true; window.close() }
         desktops.removeAll()
-        guard wallpaperEnabled else { return }
+        guard wallpaperEnabled || pomodoro.isActive else { return }
         do {
             for screen in NSScreen.screens {
                 let renderer = try FlameRenderer(settings: settings)
@@ -197,10 +215,83 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 if settings.paused || settings.speed == 0 { view.draw() }
             }
         } catch {
+            if pomodoro.isActive { stopPomodoro() }
             wallpaperEnabled = false
             rebuildDesktops()
             NSAlert(error: error).runModal()
         }
+        if pomodoro.isActive { presentPomodoro() }
+        updateRendering()
+    }
+
+    @objc func togglePomodoro() {
+        if pomodoro.isActive { stopPomodoro(); return }
+        previewWasVisible = preview.isVisible
+        previousApplication = NSWorkspace.shared.frontmostApplication
+        previousPresentationOptions = NSApp.presentationOptions
+        pomodoro.start()
+        for item in pomodoroMenuItems { item.state = .on }
+        preview.orderOut(nil)
+        if desktops.isEmpty { rebuildDesktops() } else { presentPomodoro() }
+        guard pomodoro.isActive else { return }
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.updatePomodoro() }
+        timer.tolerance = 0.1
+        pomodoroTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+        updateRendering()
+    }
+
+    func presentPomodoro() {
+        for overlay in pomodoroOverlays { overlay.removeFromSuperview() }
+        pomodoroOverlays.removeAll()
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.presentationOptions = [.autoHideDock, .autoHideMenuBar]
+        for (window, view, _) in desktops {
+            (window as? DesktopWindow)?.presentsPomodoro = true
+            // Cover normal windows and the Dock, but allow the menu bar to reveal on hover.
+            window.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.mainMenuWindow)) - 1)
+            window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+            window.ignoresMouseEvents = false
+            let overlay = PomodoroOverlay(frame: view.bounds)
+            overlay.onInterrupt = { [weak self] in self?.stopPomodoro() }
+            overlay.update(seconds: pomodoro.remainingSeconds())
+            view.addSubview(overlay)
+            pomodoroOverlays.append(overlay)
+            window.orderFrontRegardless()
+            window.makeFirstResponder(overlay)
+        }
+        desktops.first?.0.makeKey()
+    }
+
+    func updatePomodoro() {
+        guard pomodoro.isActive else { return }
+        let remaining = pomodoro.remainingSeconds()
+        if remaining == 0 { stopPomodoro(); return }
+        for overlay in pomodoroOverlays { overlay.update(seconds: remaining) }
+    }
+
+    func stopPomodoro() {
+        guard pomodoro.isActive else { return }
+        pomodoroTimer?.invalidate()
+        pomodoroTimer = nil
+        pomodoro.reset()
+        for item in pomodoroMenuItems { item.state = .off }
+        for overlay in pomodoroOverlays { overlay.removeFromSuperview() }
+        pomodoroOverlays.removeAll()
+        NSApp.presentationOptions = previousPresentationOptions
+        for (window, _, _) in desktops {
+            window.resignKey()
+            (window as? DesktopWindow)?.presentsPomodoro = false
+            window.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) + 1)
+            window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+            window.ignoresMouseEvents = true
+        }
+        if !wallpaperEnabled { rebuildDesktops() }
+        if previewWasVisible { preview.orderFront(nil) }
+        if NSApp.isActive, previousApplication?.processIdentifier != ProcessInfo.processInfo.processIdentifier {
+            previousApplication?.activate(options: [])
+        }
+        previousApplication = nil
         updateRendering()
     }
 
@@ -220,7 +311,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             observers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: name,object: nil,queue: .main) { [weak self] _ in self?.displayAsleep = true; self?.updateRendering() })
         }
         for name in [NSWorkspace.screensDidWakeNotification,NSWorkspace.didWakeNotification] {
-            observers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: name,object: nil,queue: .main) { [weak self] _ in self?.displayAsleep = false; self?.updateRendering() })
+            observers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: name,object: nil,queue: .main) { [weak self] _ in self?.displayAsleep = false; self?.updatePomodoro(); self?.updateRendering() })
         }
     }
 
@@ -234,6 +325,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return true
     }
     @objc func quit() { NSApp.terminate(nil) }
+    func applicationWillTerminate(_ notification: Notification) {
+        pomodoroTimer?.invalidate()
+        if pomodoro.isActive { NSApp.presentationOptions = previousPresentationOptions }
+    }
 }
 
 if let index = CommandLine.arguments.firstIndex(of: "--snapshot"), CommandLine.arguments.count > index+1 {

@@ -5,7 +5,7 @@ APP="dist/SimplexFlame.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp Sources/SimplexFlame/Flame.metal "$APP/Contents/Resources/"
 xcrun swiftc -O -swift-version 5 -target "$(uname -m)-apple-macosx13.0" \
-    Sources/SimplexFlame/Renderer.swift Sources/SimplexFlame/main.swift \
+    Sources/SimplexFlame/Renderer.swift Sources/SimplexFlame/Pomodoro.swift Sources/SimplexFlame/main.swift \
     -o "$APP/Contents/MacOS/SimplexFlame"
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
