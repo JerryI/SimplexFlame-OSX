@@ -1,0 +1,54 @@
+name: Build release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.release.id }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-upload:
+    runs-on: macos-15
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@v6
+
+      - name: Run tests
+        run: swift test
+
+      - name: Build universal app
+        env:
+          ARCHS: arm64 x86_64
+        run: bash scripts/build.sh
+
+      - name: Set bundle version
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          version="${TAG_NAME#v}"
+          if [[ "$version" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" dist/SimplexFlame.app/Contents/Info.plist
+          fi
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" dist/SimplexFlame.app/Contents/Info.plist
+          codesign --force --deep --sign - dist/SimplexFlame.app
+
+      - name: Verify and package app
+        run: |
+          codesign --verify --deep --strict dist/SimplexFlame.app
+          lipo dist/SimplexFlame.app/Contents/MacOS/SimplexFlame -verify_arch x86_64 arm64
+          ditto -c -k --sequesterRsrc --keepParent dist/SimplexFlame.app SimplexFlame-macOS.zip
+          shasum -a 256 SimplexFlame-macOS.zip > SimplexFlame-macOS.zip.sha256
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG_NAME" SimplexFlame-macOS.zip SimplexFlame-macOS.zip.sha256 --clobber

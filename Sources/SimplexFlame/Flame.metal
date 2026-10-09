@@ -6,7 +6,7 @@ struct Uniforms {
     float time;
     float grain;
     float brightness;
-    float padding;
+    float darkMode;
     float2 fieldResolution;
 };
 
@@ -75,18 +75,22 @@ float flameField(float2 uv, constant Uniforms &u) {
 float4 flameColor(float field, float2 position, constant Uniforms &u) {
     float grit = hash(floor(position));
     float grit2 = hash(floor(position)+float2(413,79));
-    float granularField = field + (grit-0.5)*0.23*u.grain;
-    float3 charcoal = float3(0.038,0.045,0.050);
-    float3 red = float3(0.98,0.045,0.018);
-    float3 orange = float3(1.0,0.48,0.115);
-    float3 teal = float3(0.16,0.35,0.38);
-    float3 deepTeal = float3(0.06,0.18,0.21);
+    float granularField = field + (grit-0.5)*0.23*u.grain*mix(0.30,1.0,u.darkMode);
+    // A clean daylight base with soft coral, peach, and muted teal folds.
+    // Keep the original night colors and grain strength intact.
+    float3 charcoal = mix(float3(0.965,0.970,0.975),float3(0.038,0.045,0.050),u.darkMode);
+    float3 red = mix(float3(0.80,0.49,0.45),float3(0.98,0.045,0.018),u.darkMode);
+    float3 orange = mix(float3(0.93,0.73,0.59),float3(1.0,0.48,0.115),u.darkMode);
+    float3 teal = mix(float3(0.59,0.73,0.73),float3(0.16,0.35,0.38),u.darkMode);
+    float3 deepTeal = mix(float3(0.36,0.55,0.59),float3(0.06,0.18,0.21),u.darkMode);
     float3 color = mix(charcoal,red,smoothstep(-0.13,0.19,granularField));
     color = mix(color,orange,smoothstep(0.17,0.48,granularField));
     color = mix(color,teal,smoothstep(0.52,0.95,granularField));
     color = mix(color,deepTeal,smoothstep(1.05,1.75,granularField));
-    color += (grit2-0.5)*0.105*u.grain;
-    color *= 1.0+(grit-0.5)*0.20*u.grain;
+    // In daylight, fade subtle texture into the shapes so the base stays clear.
+    float surfaceGrain = u.grain*mix(0.22*smoothstep(-0.13,0.19,field),1.0,u.darkMode);
+    color += (grit2-0.5)*0.105*surfaceGrain;
+    color *= 1.0+(grit-0.5)*0.20*surfaceGrain;
     color = clamp(color*u.brightness,0.0,1.0);
     // Palette values are sRGB; the render target handles linear-to-sRGB encoding.
     color = select(color/12.92,pow((color+0.055)/1.055,float3(2.4)),color>0.04045);

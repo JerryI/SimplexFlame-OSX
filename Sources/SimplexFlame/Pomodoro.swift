@@ -38,18 +38,18 @@ struct PomodoroSession {
 
 /// An AppKit overlay; the wallpaper's Metal pipeline does not render the timer.
 final class PomodoroOverlay: NSView {
+    private let title = NSTextField(labelWithString: "TAKE A BREAK")
     private let countdown = NSTextField(labelWithString: "00:30")
+    private let hint = NSTextField(labelWithString: "Double-click anywhere or press Esc to skip this break")
     var onInterrupt: (() -> Void)?
 
-    override init(frame: NSRect) {
+    init(frame: NSRect, isDarkMode: Bool) {
         super.init(frame: frame)
         autoresizingMask = [.width, .height]
 
-        let title = NSTextField(labelWithString: "TAKE A BREAK")
         title.font = .systemFont(ofSize: 13, weight: .semibold)
         countdown.font = .monospacedDigitSystemFont(ofSize: 88, weight: .light)
         countdown.setAccessibilityLabel("Time remaining")
-        let hint = NSTextField(labelWithString: "Double-click anywhere or press Esc to skip this break")
         hint.font = .systemFont(ofSize: 13)
 
         let stack = NSStackView(views: [title, countdown, hint])
@@ -58,13 +58,9 @@ final class PomodoroOverlay: NSView {
         stack.spacing = 14
         stack.translatesAutoresizingMaskIntoConstraints = false
         for label in [title, countdown, hint] {
-            label.textColor = .white
             label.alignment = .center
-            label.shadow = NSShadow()
-            label.shadow?.shadowColor = NSColor.black.withAlphaComponent(0.8)
-            label.shadow?.shadowBlurRadius = 8
-            label.shadow?.shadowOffset = NSSize(width: 0, height: -1)
         }
+        updateAppearance(isDarkMode: isDarkMode)
         addSubview(stack)
         NSLayoutConstraint.activate([
             stack.centerXAnchor.constraint(equalTo: centerXAnchor),
@@ -84,6 +80,21 @@ final class PomodoroOverlay: NSView {
 
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 { onInterrupt?() } else { super.keyDown(with: event) }
+    }
+
+    func updateAppearance(isDarkMode: Bool) {
+        for label in [title, countdown, hint] {
+            label.textColor = isDarkMode ? .white : .black
+            guard isDarkMode else {
+                label.shadow = nil
+                continue
+            }
+            let shadow = NSShadow()
+            shadow.shadowColor = NSColor.black.withAlphaComponent(0.8)
+            shadow.shadowBlurRadius = 8
+            shadow.shadowOffset = NSSize(width: 0, height: -1)
+            label.shadow = shadow
+        }
     }
 
     func update(seconds: Int) {

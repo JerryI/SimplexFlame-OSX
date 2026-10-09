@@ -13,7 +13,7 @@ bash scripts/build.sh
 open dist/SimplexFlame.app
 ```
 
-The app opens a preview with flow speed, grain, and brightness controls. Click **Use as Wallpaper** to place the animation behind desktop icons on each connected screen. Use the **flame menu-bar icon** to reopen controls, pause, disable the wallpaper, or quit. Quitting reveals the existing wallpaper. Slider settings are remembered. It does not install a login item or change the system wallpaper image.
+The app opens a preview with flow speed, grain, and brightness controls. Its day and night palettes follow the macOS appearance setting automatically; the original dark palette is used at night. Daylight uses soft coral, peach, and muted teal over a clean, cool off-white base, with subtle grain confined to the colored shapes. Click **Use as Wallpaper** to place the animation behind desktop icons on each connected screen. Use the **flame menu-bar icon** to reopen controls, pause, disable the wallpaper, or quit. Quitting reveals the existing wallpaper. Slider settings are remembered. It does not install a login item or change the system wallpaper image.
 
 Check **Pomodoro · 20 Minutes** in the flame menu to enable repeating breaks. After 20 minutes of normal work, a fullscreen splash over the animated wallpaper on every display counts down from 30 seconds to zero. It then returns to your previous wallpaper/preview mode and starts the next 20-minute work interval. Double-click anywhere or press Escape to skip a break and begin the next work interval immediately. Uncheck the menu item at any time to stop the cycle and dismiss any active break. Move the pointer to the top edge to reveal the menu bar during a break. Sleep counts toward the interval; a break that becomes due during sleep appears on wake.
 
@@ -25,6 +25,8 @@ Pomodoro reuses the existing wallpaper views and adds a separate text overlay up
 mkdir -p output
 dist/SimplexFlame.app/Contents/MacOS/SimplexFlame --snapshot output/frame-0.png 0
 dist/SimplexFlame.app/Contents/MacOS/SimplexFlame --snapshot output/frame-30.png 30
+# Preview the light palette (snapshots default to dark):
+dist/SimplexFlame.app/Contents/MacOS/SimplexFlame --snapshot output/daylight.png 0 --light
 # Match a specific display's pixel dimensions:
 dist/SimplexFlame.app/Contents/MacOS/SimplexFlame --snapshot output/display.png 30 --width 2560 --height 1600
 ```

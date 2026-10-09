@@ -7,6 +7,15 @@ final class DesktopWindow: NSWindow {
     override var canBecomeMain: Bool { false }
 }
 
+final class AppearanceTrackingView: NSView {
+    var onAppearanceChange: (() -> Void)?
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        onAppearanceChange?()
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let settings = Settings()
     var preview: NSWindow!
@@ -32,6 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
+            updateAppearance()
             let defaults = UserDefaults.standard
             if defaults.object(forKey: "speed") != nil { settings.speed = defaults.float(forKey: "speed") }
             if defaults.object(forKey: "grain") != nil { settings.grain = defaults.float(forKey: "grain") }
@@ -88,7 +98,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         preview.isReleasedWhenClosed = false
         preview.delegate = self
         preview.center()
-        let root = preview.contentView!
+        let root = AppearanceTrackingView(frame: preview.contentView!.bounds)
+        root.autoresizingMask = [.width, .height]
+        root.onAppearanceChange = { [weak self] in self?.updateAppearance() }
+        preview.contentView = root
         previewView = previewRenderer.makeView(frame: NSRect(x: 0,y: 112,width: 1060,height: 668))
         previewView.autoresizingMask = [.width,.height]
         root.addSubview(previewView)
@@ -264,7 +277,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             window.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.mainMenuWindow)) - 1)
             window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
             window.ignoresMouseEvents = false
-            let overlay = PomodoroOverlay(frame: view.bounds)
+            let overlay = PomodoroOverlay(frame: view.bounds, isDarkMode: settings.isDarkMode)
             overlay.onInterrupt = { [weak self] in self?.finishPomodoroBreak() }
             overlay.update(seconds: pomodoro.remainingSeconds())
             view.addSubview(overlay)
@@ -328,6 +341,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         for (_,view,_) in desktops { view.isPaused = pause }
     }
 
+    func updateAppearance() {
+        let appearance = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua])
+        let isDark = appearance == .darkAqua
+        guard settings.isDarkMode != isDark else { return }
+        settings.isDarkMode = isDark
+        for overlay in pomodoroOverlays { overlay.updateAppearance(isDarkMode: isDark) }
+        if previewView?.isPaused == true { previewView?.draw() }
+        for (_, view, _) in desktops where view.isPaused { view.draw() }
+    }
+
     func observeSystem() {
         let center = NotificationCenter.default
         observers.append(center.addObserver(forName: NSApplication.didChangeScreenParametersNotification,object: nil,queue: .main) { [weak self] _ in
@@ -360,7 +383,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
 if let index = CommandLine.arguments.firstIndex(of: "--snapshot"), CommandLine.arguments.count > index+1 {
     do {
-        let renderer = try FlameRenderer(settings: Settings(),reference: CommandLine.arguments.contains("--reference"))
+        let settings = Settings()
+        settings.isDarkMode = !CommandLine.arguments.contains("--light")
+        let renderer = try FlameRenderer(settings: settings,reference: CommandLine.arguments.contains("--reference"))
         let time = CommandLine.arguments.count > index+2 ? Float(CommandLine.arguments[index+2]) ?? 0 : 0
         func dimension(_ flag: String, fallback: Int) -> Int {
             guard let i = CommandLine.arguments.firstIndex(of: flag), i+1 < CommandLine.arguments.count,

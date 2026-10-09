@@ -5,6 +5,7 @@ final class Settings {
     var speed: Float = 1
     var grain: Float = 1
     var brightness: Float = 1
+    var isDarkMode = true
     var paused = false
 }
 
@@ -13,7 +14,7 @@ struct Uniforms {
     var time: Float
     var grain: Float
     var brightness: Float
-    var padding: Float = 0
+    var darkMode: Float
     var fieldResolution: SIMD2<Float> = .zero
 }
 
@@ -97,7 +98,7 @@ final class FlameRenderer: NSObject, MTKViewDelegate {
     }
 
     private func encode(_ command: MTLCommandBuffer, pass: MTLRenderPassDescriptor, size: CGSize, time: Float) {
-        var uniforms = Uniforms(resolution: SIMD2(Float(size.width),Float(size.height)), time: time, grain: settings.grain, brightness: settings.brightness)
+        var uniforms = Uniforms(resolution: SIMD2(Float(size.width),Float(size.height)), time: time, grain: settings.grain, brightness: settings.brightness, darkMode: settings.isDarkMode ? 1 : 0)
         var sampledField: MTLTexture?
         if !reference {
             let width = Int(ceil(size.width/4))+2, height = Int(ceil(size.height/4))+2
