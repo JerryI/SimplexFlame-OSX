@@ -4,7 +4,10 @@ A native macOS Metal wallpaper experiment inspired by some random image from the
 
 ![](./img.png)
 
-## Run
+## How to run
+Check releases
+
+## Development
 
 Requires macOS 13+ and Apple's Command Line Tools (`xcode-select --install`). No third-party dependencies or full Xcode installation required.
 
